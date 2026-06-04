@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: message-service
+  namespace: messager
+spec:
+  selector:
+    app: message-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: message-service
+  namespace: messager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: message-service
+  template:
+    metadata:
+      labels:
+        app: message-service
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: workload
+                    operator: In
+                    values:
+                      - app
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: disk
+                    operator: In
+                    values:
+                      - fast
+      initContainers:
+        - name: wait-minio-s3-meta
+          image: minio/mc:latest
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: csi-s3-secret
+                  key: accessKeyID
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: csi-s3-secret
+                  key: secretAccessKey
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              until mc alias set local http://minio:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"; do sleep 2; done
+              until mc stat local/uploads/.metadata.json >/dev/null 2>&1; do
+                echo "waiting for minio-s3-bootstrap Job (.metadata.json)..."
+                sleep 2
+              done
+      containers:
+        - name: message-service
+          image: mablinov2704/message-service:latest
+          ports:
+            - containerPort: 8082
+          env:
+            - name: HTTP_PORT
+              value: "8082"
+            - name: DB_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: messager-db-secret
+                  key: DB_DSN_MSG
+            - name: UPLOADS_DIR
+              valueFrom:
+                configMapKeyRef:
+                  name: messager-config
+                  key: UPLOADS_DIR
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: message-uploads-pvc

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: messager-config
+  namespace: messager
+data:
+  BFF_URL: ""
+  BFF_INTERNAL_URL: "http://bff:8080"
+  USER_SERVICE_URL: "http://user-service:8081"
+  MSG_SERVICE_URL: "http://message-service:8082"
+  UPLOADS_DIR: "/app/uploads"

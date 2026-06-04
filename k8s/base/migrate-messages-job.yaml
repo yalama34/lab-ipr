@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate-messages
+  namespace: messager
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: workload
+                    operator: In
+                    values:
+                      - system
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          envFrom:
+            - secretRef:
+                name: messager-db-secret
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+              echo "postgres is ready"
+      containers:
+        - name: migrate-messages
+          image: ghcr.io/kukymbr/goose-docker:latest
+          env:
+            - name: GOOSE_DRIVER
+              value: postgres
+            - name: GOOSE_DBSTRING
+              valueFrom:
+                secretKeyRef:
+                  name: messager-db-secret
+                  key: DB_DSN_MSG
+            - name: GOOSE_MIGRATION_DIR
+              value: /migrations
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+      volumes:
+        - name: migrations
+          configMap:
+            name: messages-migrations-cm

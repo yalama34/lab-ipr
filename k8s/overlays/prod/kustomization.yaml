@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: mablinov2704/frontend
+    newTag: stable
+  - name: mablinov2704/bff
+    newTag: stable
+  - name: mablinov2704/user-service
+    newTag: stable
+  - name: mablinov2704/message-service
+    newTag: stable
+
+patches:
+  - path: patches/resources.yaml
+  - target:
+      kind: Ingress
+      name: frontend-ingress
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: messager.example.com
+
+replicas:
+  - name: frontend
+    count: 2
+  - name: bff
+    count: 2
+  - name: user-service
+    count: 2
+  - name: message-service
+    count: 2
